@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Page Narrator Settings</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        margin: 32px auto;
+        max-width: 640px;
+        line-height: 1.5;
+        color: #111;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+
+      input[type='password'],
+      select {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+      }
+
+      button {
+        margin-top: 20px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        border: none;
+        background: #111827;
+        color: #fff;
+        font-size: 15px;
+        cursor: pointer;
+      }
+
+      .hint {
+        font-size: 13px;
+        color: #555;
+        margin-top: 4px;
+      }
+
+      .flash {
+        margin-top: 16px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Page Narrator Settings</h1>
+    <p>
+      Provide AWS credentials so the background worker can sign requests to Amazon Polly.
+      The keys are stored locally by Chrome and are only used to make Polly requests initiated
+      from this extension.
+    </p>
+    <form id="settings">
+      <label for="accessKey">AWS access key ID</label>
+      <input type="text" id="accessKey" autocomplete="off" placeholder="AKIA..." required />
+      <p class="hint">Create a programmatic IAM user with Polly permissions.</p>
+
+      <label for="secretKey">AWS secret access key</label>
+      <input type="password" id="secretKey" autocomplete="off" placeholder="••••••" required />
+
+      <label for="region">Default region</label>
+      <input type="text" id="region" autocomplete="off" placeholder="us-east-1" required />
+
+      <label for="voice">Voice</label>
+      <select id="voice">
+        <option value="Joanna">Joanna</option>
+        <option value="Matthew">Matthew</option>
+        <option value="Amy">Amy</option>
+        <option value="Salli">Salli</option>
+        <option value="Zhiyu">Zhiyu (Chinese)</option>
+      </select>
+
+      <button type="submit">Save settings</button>
+      <div id="flash" class="flash"></div>
+    </form>
+    <script src="options.js"></script>
+  </body>
+</html>

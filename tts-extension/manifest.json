@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Page Narrator (AWS Polly)",
+  "description": "Adds a floating play button that uses Amazon Polly TTS to read the active page.",
+  "version": "0.2.0",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://polly.*.amazonaws.com/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["contentScript.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Page Narrator"
+  },
+  "options_page": "options.html"
+}

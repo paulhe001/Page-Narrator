@@ -8,6 +8,12 @@ const DEFAULT_REGION = 'us-east-1';
 const AWS_SERVICE = 'polly';
 const AWS_ALGORITHM = 'AWS4-HMAC-SHA256';
 const POLLY_PATH = '/v1/speech';
+const DEFAULT_SPEECH_RATE = '1';
+const SPEECH_RATE_LOOKUP = {
+  '0.75': '75%',
+  '1': '100%',
+  '1.25': '125%'
+};
 
 const activeNarrations = new Map(); // tabId -> {controller, cancelled}
 const textEncoder = new TextEncoder();
@@ -53,6 +59,7 @@ async function handleStartNarration(tabId, payload) {
   const secretAccessKey = settings.secretAccessKey;
   const region = settings.region || DEFAULT_REGION;
   const voice = settings.voice || DEFAULT_VOICE;
+  const speechRate = normalizeSpeechRate(payload.speechRate || settings.speechRate);
   if (!accessKeyId || !secretAccessKey) {
     notifyTab(tabId, {
       type: 'tts-error',
@@ -90,6 +97,7 @@ async function handleStartNarration(tabId, payload) {
         voice: voiceConfig.voiceId,
         languageCode: voiceConfig.languageCode,
         text: prefixChunk(chunkIndex, payload.title, payload.url, chunk),
+        speechRate,
         signal: controller.signal
       });
 
@@ -153,11 +161,14 @@ async function requestSpeechChunk({
   voice,
   languageCode,
   text,
+  speechRate,
   signal
 }) {
   const url = `https://polly.${region}.amazonaws.com${POLLY_PATH}`;
+  const ssmlPayload = buildSsmlPayload(text, speechRate);
   const payload = JSON.stringify({
-    Text: text,
+    Text: ssmlPayload,
+    TextType: 'ssml',
     OutputFormat: AUDIO_FORMAT,
     VoiceId: voice,
     ...(languageCode ? { LanguageCode: languageCode } : {})
@@ -204,32 +215,101 @@ async function safeReadError(response) {
   }
 }
 
-function chunkText(text) {
+function chunkText(text = '') {
   const chunks = [];
   let current = '';
+  const sentences = text.split(/(?<=[.!?])\s+/);
 
-  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
-    if ((current + ' ' + sentence).trim().length > CHUNK_SIZE && current) {
+  const pushCurrent = () => {
+    if (current.trim()) {
       chunks.push(current.trim());
+      current = '';
+    }
+  };
+
+  for (const rawSentence of sentences) {
+    const sentence = rawSentence.trim();
+    if (!sentence) {
+      continue;
+    }
+
+    if (sentence.length > CHUNK_SIZE) {
+      pushCurrent();
+      for (const piece of splitLongText(sentence, CHUNK_SIZE)) {
+        chunks.push(piece);
+      }
+      continue;
+    }
+
+    const tentative = current ? `${current} ${sentence}` : sentence;
+    if (tentative.length > CHUNK_SIZE && current) {
+      pushCurrent();
       current = sentence;
     } else {
-      current += (current ? ' ' : '') + sentence;
+      current = tentative;
     }
   }
 
-  if (current.trim()) {
-    chunks.push(current.trim());
-  }
-
+  pushCurrent();
   return chunks;
 }
 
-function prefixChunk(index, title = '', url = '', text = '') {
-  if (index > 0 || !title) {
-    return text;
+function splitLongText(text, size) {
+  const pieces = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    let end = Math.min(cursor + size, text.length);
+    if (end < text.length) {
+      const breakPoint = text.lastIndexOf(' ', end);
+      if (breakPoint > cursor) {
+        end = breakPoint;
+      }
+    }
+
+    let chunk = text.slice(cursor, end).trim();
+    if (!chunk && end === text.length) {
+      break;
+    }
+    if (!chunk) {
+      cursor = end + 1;
+      continue;
+    }
+
+    pieces.push(chunk);
+    cursor = end;
+    while (cursor < text.length && text[cursor] === ' ') {
+      cursor += 1;
+    }
   }
 
-  return `${title.trim()} from ${url}. ${text}`;
+  return pieces;
+}
+
+function buildSsmlPayload(text = '', rate = DEFAULT_SPEECH_RATE) {
+  const normalizedRate = SPEECH_RATE_LOOKUP[normalizeSpeechRate(rate)];
+  const safeText = escapeForSsml(text);
+  return `<speak><prosody rate="${normalizedRate}">${safeText}</prosody></speak>`;
+}
+
+function normalizeSpeechRate(rate) {
+  const key = typeof rate === 'string' ? rate.trim() : String(rate || DEFAULT_SPEECH_RATE);
+  return SPEECH_RATE_LOOKUP[key] ? key : DEFAULT_SPEECH_RATE;
+}
+
+function escapeForSsml(input = '') {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function prefixChunk(_index, _title = '', _url = '', text = '') {
+  return text;
 }
 
 function selectVoiceForText(preferredVoice, text) {
@@ -374,13 +454,20 @@ function arrayBufferToHex(bufferSource) {
 }
 
 async function getSettings() {
-  const { awsAccessKeyId, awsSecretAccessKey, awsRegion, preferredVoice } =
-    await chrome.storage.local.get(['awsAccessKeyId', 'awsSecretAccessKey', 'awsRegion', 'preferredVoice']);
+  const { awsAccessKeyId, awsSecretAccessKey, awsRegion, preferredVoice, speechRate } =
+    await chrome.storage.local.get([
+      'awsAccessKeyId',
+      'awsSecretAccessKey',
+      'awsRegion',
+      'preferredVoice',
+      'speechRate'
+    ]);
   return {
     accessKeyId: (awsAccessKeyId || '').trim(),
     secretAccessKey: (awsSecretAccessKey || '').trim(),
     region: (awsRegion || DEFAULT_REGION).trim() || DEFAULT_REGION,
-    voice: preferredVoice || DEFAULT_VOICE
+    voice: preferredVoice || DEFAULT_VOICE,
+    speechRate: normalizeSpeechRate(speechRate)
   };
 }
 
